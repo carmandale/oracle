@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import { Command, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
+import kleur from 'kleur';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -34,26 +35,31 @@ program
   .option('--render-markdown', 'Emit the assembled markdown bundle for prompt + files and exit.', false)
   .showHelpAfterError('(use --help for usage)');
 
+const isTty = process.stdout.isTTY;
+const bold = (text) => (isTty ? kleur.bold(text) : text);
+const dim = (text) => (isTty ? kleur.dim(text) : text);
+
+program.addHelpText('beforeAll', () => `${bold('Oracle CLI')} — GPT-5 Pro/GPT-5.1 for tough questions with code/file context.\n`);
 program.addHelpText(
   'after',
-  `
-Tips:
-  • This CLI is tuned for tough questions where GPT-5 needs rich context. Attach source files for best results but keep the total size below the ~196k-token window.
-  • Use --files-report to see how many tokens each attachment consumes before paying for a run.
-  • Non-preview runs spawn a detached session that keeps going even if your terminal closes.
+  () => `
+${bold('Tips')}
+${dim(' •')} This CLI is tuned for tough questions. Attach source files for best results, but keep total input under ~196k tokens.
+${dim(' •')} Run ${bold('--files-report')} to see per-file token impact before spending money.
+${dim(' •')} Non-preview runs spawn detached sessions so requests keep running even if your terminal closes.
 
-Examples:
-  $ oracle --prompt "Summarize risks" --file docs/risk.md --files-report --preview
-    (inspect the token budget and attached files without hitting the API)
+${bold('Examples')}
+${bold('  oracle')} --prompt "Summarize risks" --file docs/risk.md --files-report --preview
+${dim('    Inspect tokens + files without calling the API.')}
 
-  $ oracle --prompt "Explain bug" --file src/ --files-report
-    (launches a background session; note the Session ID in the output)
+${bold('  oracle')} --prompt "Explain bug" --file src/ --files-report
+${dim('    Launch background session and note the printed Session ID.')}
 
-  $ oracle --status
-    (lists recent sessions; add --status-hours 72 or --status-all to widen the range)
+${bold('  oracle')} --status
+${dim('    Show sessions from the last 24h. Add --status-hours 72 or --status-all to expand.')}
 
-  $ oracle --session <sessionId>
-    (attach to an existing request, follow the live stream if still running, or replay the saved transcript)
+${bold('  oracle')} --session <sessionId>
+${dim('    Attach to a running/completed session, streaming the saved transcript.')}
 `,
 );
 
