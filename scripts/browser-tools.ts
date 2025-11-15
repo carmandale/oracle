@@ -492,10 +492,24 @@ async function describeChromeSessions(options: {
       fetchJson(`http://localhost:${proc.port}/json/version`).catch(() => undefined),
       fetchJson(`http://localhost:${proc.port}/json/list`).catch(() => []),
     ]);
+    const filteredTabs = Array.isArray(tabs)
+      ? (tabs as ChromeTabInfo[]).filter((tab) => {
+          const type = tab.type?.toLowerCase() ?? '';
+          if (type && type !== 'page' && type !== 'app') {
+            if (!tab.url || tab.url.startsWith('devtools://') || tab.url.startsWith('chrome-extension://')) {
+              return false;
+            }
+          }
+          if (!tab.url || tab.url.trim().length === 0) {
+            return false;
+          }
+          return true;
+        })
+      : [];
     results.push({
       ...proc,
       version: (version as Record<string, string>) ?? undefined,
-      tabs: Array.isArray(tabs) ? (tabs as ChromeTabInfo[]) : [],
+      tabs: filteredTabs,
     });
   }
   return results;
