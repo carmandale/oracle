@@ -26,8 +26,8 @@ export function registerConsultTool(server: McpServer): void {
     {
       title: 'Run an Oracle session',
       description: 'Execute a prompt with optional files via the Oracle CLI engines and return the stored session result.',
-      inputSchema: consultInputSchema as unknown as z.ZodType<object>,
-      outputSchema: consultOutputSchema as unknown as z.ZodType<object>,
+      inputSchema: consultInputSchema as z.ZodType<object, z.ZodTypeDef, object>,
+      outputSchema: consultOutputSchema as z.ZodType<object, z.ZodTypeDef, object>,
     },
     async (input: unknown) => {
       const { prompt, files, model, engine, slug } = consultInputSchema.parse(input);
