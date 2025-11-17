@@ -45,6 +45,7 @@ oracle session <id>                 # replay a run locally
 
 - **One-liner in CI** — `OPENAI_API_KEY=sk-... npx -y @steipete/oracle --prompt "Smoke-check latest PR" --file src/ docs/ --preview summary` (add to your pipeline as a non-blocking report step).
 - **Package script** — In `package.json`: `"oracle": "oracle --prompt \"Review the diff\" --file ."` then run `OPENAI_API_KEY=... pnpm oracle`.
+- **MCP server alternative** — Prefer MCP? Use the bundled stdio server bin `oracle-mcp` (also available via `pnpm mcp`) which exposes `consult` and `sessions` tools plus read-only session resources; see `docs/mcp.md` for full tool/resource schemas and behavior.
 
 ## Highlights
 
