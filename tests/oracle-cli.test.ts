@@ -253,6 +253,26 @@ describe('api key logging', () => {
     expect(combined).not.toContain('gemini-secret');
   });
 
+  test('single-line summary includes session id when provided', async () => {
+    const stream = new MockStream([], buildResponse());
+    const client = new MockClient(stream);
+    const logs: string[] = [];
+    await runOracle(
+      { prompt: 'Summarize', model: 'gpt-5-pro', sessionId: 'abc123', background: false },
+      {
+        apiKey: 'sk-test',
+        client,
+        log: (msg) => logs.push(msg),
+        write: () => true,
+      },
+    );
+    const finished = logs.find((line) => line.startsWith('Finished in '));
+    expect(finished).toBeDefined();
+    expect(finished).toContain('session abc123 completed');
+    // Ensure no separate duplicate completion line was logged
+    expect(logs.filter((line) => line.includes('session abc123 completed')).length).toBe(1);
+  });
+
   test('verbose logs insert separation before answer stream', async () => {
     const stream = new MockStream(
       [
