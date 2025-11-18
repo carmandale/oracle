@@ -25,7 +25,7 @@
 - mcporter example (stdio):
   ```json
   {
-    "name": "oracle-mcp",
+    "name": "oracle",
     "type": "stdio",
     "command": "npx",
     "args": ["-y", "@steipete/oracle", "oracle-mcp"]
