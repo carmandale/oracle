@@ -22,6 +22,9 @@
   "files": [
     "dist/**/*",
     "assets-oracle-icon.png",
+    "vendor/oracle-notifier/OracleNotifier.app/Contents/MacOS/OracleNotifier",
+    "vendor/oracle-notifier/OracleNotifier.app/Contents/Resources/OracleIcon.icns",
+    "vendor/oracle-notifier/OracleNotifier.app/Contents/Info.plist",
     "README.md",
     "LICENSE"
   ],

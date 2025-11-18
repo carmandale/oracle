@@ -1,4 +1,5 @@
 import notifier from 'toasted-notifier';
+import { spawn } from 'node:child_process';
 import { formatUSD, formatNumber } from '../oracle/format.js';
 import { MODEL_CONFIGS } from '../oracle/config.js';
 import type { SessionMode, SessionMetadata } from '../sessionManager.js';
@@ -70,6 +71,9 @@ export async function sendSessionNotification(
   const message = buildMessage(payload);
 
   try {
+    if (await tryMacNativeNotifier(title, message, settings)) {
+      return;
+    }
     await notifier.notify({
       title,
       message,
@@ -200,6 +204,32 @@ function fsExistsSync(target: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function tryMacNativeNotifier(title: string, message: string, settings: NotificationSettings): Promise<boolean> {
+  const binary = macNativeNotifierPath();
+  if (!binary) return false;
+  return new Promise((resolve) => {
+    const child = spawn(binary, [title, message, settings.sound ? 'Glass' : ''], {
+      stdio: 'ignore',
+    });
+    child.on('error', () => resolve(false));
+    child.on('exit', (code) => resolve(code === 0));
+  });
+}
+
+function macNativeNotifierPath(): string | null {
+  if (process.platform !== 'darwin') return null;
+  const candidates = [
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../vendor/oracle-notifier/OracleNotifier.app/Contents/MacOS/OracleNotifier'),
+    path.resolve(process.cwd(), 'vendor/oracle-notifier/OracleNotifier.app/Contents/MacOS/OracleNotifier'),
+  ];
+  for (const candidate of candidates) {
+    if (fsExistsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 function muteByConfig(env: NodeJS.ProcessEnv, config?: NotifyConfig): boolean {
