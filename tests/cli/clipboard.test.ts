@@ -1,31 +1,26 @@
 import { describe, expect, test, vi } from 'vitest';
+import clipboard from 'clipboardy';
 import { copyToClipboard } from '../../src/cli/clipboard.ts';
 
+vi.mock('clipboardy', () => ({
+  default: {
+    write: vi.fn(),
+  },
+}));
+
 describe('copyToClipboard', () => {
-  test('uses platform-preferred command first', async () => {
-    const runCommand = vi.fn().mockResolvedValue({ code: 0 });
-    const result = await copyToClipboard('hello', { platform: 'darwin', runCommand });
-    expect(result).toEqual({ success: true, command: 'pbcopy' });
-    expect(runCommand).toHaveBeenCalledTimes(1);
-    expect(runCommand).toHaveBeenCalledWith('pbcopy', [], 'hello');
+  test('returns success when clipboardy.write resolves', async () => {
+    (clipboard.write as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    const result = await copyToClipboard('hello');
+    expect(result).toEqual({ success: true, command: 'clipboardy' });
+    expect(clipboard.write).toHaveBeenCalledWith('hello');
   });
 
-  test('falls back through candidates until success', async () => {
-    const runCommand = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('missing'))
-      .mockResolvedValueOnce({ code: 1 })
-      .mockResolvedValueOnce({ code: 0 });
-    const result = await copyToClipboard('hi', { platform: 'linux', runCommand });
-    expect(result.success).toBe(true);
-    expect(runCommand).toHaveBeenCalledTimes(3);
-    expect(runCommand.mock.calls[2][0]).toBe('xsel');
-  });
-
-  test('returns failure when no command succeeds', async () => {
-    const runCommand = vi.fn().mockResolvedValue({ code: 1 });
-    const result = await copyToClipboard('nope', { platform: 'win32', runCommand });
-    expect(result).toEqual({ success: false });
-    expect(runCommand).toHaveBeenCalledTimes(2);
+  test('returns failure when clipboardy.write throws', async () => {
+    const error = new Error('boom');
+    (clipboard.write as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(error);
+    const result = await copyToClipboard('hi');
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(error);
   });
 });

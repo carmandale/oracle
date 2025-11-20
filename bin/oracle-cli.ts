@@ -768,10 +768,18 @@ async function runRootCommand(options: CliOptions): Promise<void> {
     }
     if (copyMarkdown) {
       const result = await copyToClipboard(bundle.markdown);
-      const prefix = result.success ? 'Copied markdown to clipboard' : 'Could not copy markdown to clipboard';
-      const via = result.success && result.command ? ` via ${result.command}` : '';
-      const summary = `${prefix}${via} (${bundle.markdown.length.toLocaleString()} chars; ~${estimatedTokens.toLocaleString()} tokens).`;
-      console.log(chalk.dim(summary));
+      if (result.success) {
+        const via = result.command ? ` via ${result.command}` : '';
+        const summary = `Copied markdown to clipboard${via} (${bundle.markdown.length.toLocaleString()} chars; ~${estimatedTokens.toLocaleString()} tokens).`;
+        console.log(chalk.dim(summary));
+      } else {
+        const reason = result.error instanceof Error ? result.error.message : String(result.error ?? 'unknown error');
+        console.log(
+          chalk.dim(
+            `Copy failed (${reason}); markdown not printed. Re-run with --render-markdown if you need the content.`,
+          ),
+        );
+      }
     }
     return;
   }
