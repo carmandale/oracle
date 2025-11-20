@@ -93,11 +93,15 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
 
   try {
     client = await connectToChrome(chrome.port, logger);
-    const markConnectionLost = () => {
-      connectionClosedUnexpectedly = true;
-      logger('Chrome window closed; attempting to abort run.');
-    };
-    client.on('disconnect', markConnectionLost);
+    const disconnectPromise = new Promise<never>((_, reject) => {
+      client?.on('disconnect', () => {
+        connectionClosedUnexpectedly = true;
+        logger('Chrome window closed; attempting to abort run.');
+        reject(new Error('Chrome window closed before oracle finished. Please keep it open until completion.'));
+      });
+    });
+    const raceWithDisconnect = <T>(promise: Promise<T>): Promise<T> =>
+      Promise.race([promise, disconnectPromise]);
     const { Network, Page, Runtime, Input, DOM } = client;
 
     if (!config.headless && config.hideWindow) {
@@ -139,23 +143,27 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       logger('Skipping Chrome cookie sync (--browser-no-cookie-sync)');
     }
 
-    await navigateToChatGPT(Page, Runtime, config.url, logger);
-    await ensureNotBlocked(Runtime, config.headless, logger);
-    await ensureLoggedIn(Runtime, logger, { appliedCookies });
-    await ensurePromptReady(Runtime, config.inputTimeoutMs, logger);
+    await raceWithDisconnect(navigateToChatGPT(Page, Runtime, config.url, logger));
+    await raceWithDisconnect(ensureNotBlocked(Runtime, config.headless, logger));
+    await raceWithDisconnect(ensureLoggedIn(Runtime, logger, { appliedCookies }));
+    await raceWithDisconnect(ensurePromptReady(Runtime, config.inputTimeoutMs, logger));
     logger(`Prompt textarea ready (initial focus, ${promptText.length.toLocaleString()} chars queued)`);
     if (config.desiredModel) {
-      await withRetries(
-        () => ensureModelSelection(Runtime, config.desiredModel as string, logger),
-        {
-          retries: 2,
-          delayMs: 300,
-          onRetry: (attempt, error) => {
-            if (options.verbose) {
-              logger(`[retry] Model picker attempt ${attempt + 1}: ${error instanceof Error ? error.message : error}`);
-            }
+      await raceWithDisconnect(
+        withRetries(
+          () => ensureModelSelection(Runtime, config.desiredModel as string, logger),
+          {
+            retries: 2,
+            delayMs: 300,
+            onRetry: (attempt, error) => {
+              if (options.verbose) {
+                logger(
+                  `[retry] Model picker attempt ${attempt + 1}: ${error instanceof Error ? error.message : error}`,
+                );
+              }
+            },
           },
-        },
+        ),
       ).catch((error) => {
         const base = error instanceof Error ? error.message : String(error);
         const hint =
@@ -164,7 +172,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
             : '';
         throw new Error(`${base}${hint}`);
       });
-      await ensurePromptReady(Runtime, config.inputTimeoutMs, logger);
+      await raceWithDisconnect(ensurePromptReady(Runtime, config.inputTimeoutMs, logger));
       logger(`Prompt textarea ready (after model switch, ${promptText.length.toLocaleString()} chars queued)`);
     }
     if (attachments.length > 0) {
@@ -176,33 +184,35 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         await uploadAttachmentFile({ runtime: Runtime, dom: DOM }, attachment, logger);
       }
       const waitBudget = Math.max(config.inputTimeoutMs ?? 30_000, 30_000);
-      await waitForAttachmentCompletion(Runtime, waitBudget, logger);
+      await raceWithDisconnect(waitForAttachmentCompletion(Runtime, waitBudget, logger));
       logger('All attachments uploaded');
     }
-    await submitPrompt({ runtime: Runtime, input: Input }, promptText, logger);
+    await raceWithDisconnect(submitPrompt({ runtime: Runtime, input: Input }, promptText, logger));
     stopThinkingMonitor = startThinkingStatusMonitor(Runtime, logger, options.verbose ?? false);
-    const answer = await waitForAssistantResponse(Runtime, config.timeoutMs, logger);
+    const answer = await raceWithDisconnect(waitForAssistantResponse(Runtime, config.timeoutMs, logger));
     answerText = answer.text;
     answerHtml = answer.html ?? '';
-    const copiedMarkdown = await withRetries(
-      async () => {
-        const attempt = await captureAssistantMarkdown(Runtime, answer.meta, logger);
-        if (!attempt) {
-          throw new Error('copy-missing');
-        }
-        return attempt;
-      },
-      {
-        retries: 2,
-        delayMs: 350,
-        onRetry: (attempt, error) => {
-          if (options.verbose) {
-            logger(
-              `[retry] Markdown capture attempt ${attempt + 1}: ${error instanceof Error ? error.message : error}`,
-            );
+    const copiedMarkdown = await raceWithDisconnect(
+      withRetries(
+        async () => {
+          const attempt = await captureAssistantMarkdown(Runtime, answer.meta, logger);
+          if (!attempt) {
+            throw new Error('copy-missing');
           }
+          return attempt;
         },
-      },
+        {
+          retries: 2,
+          delayMs: 350,
+          onRetry: (attempt, error) => {
+            if (options.verbose) {
+              logger(
+                `[retry] Markdown capture attempt ${attempt + 1}: ${error instanceof Error ? error.message : error}`,
+              );
+            }
+          },
+        },
+      ),
     ).catch(() => null);
     answerMarkdown = copiedMarkdown ?? answerText;
     stopThinkingMonitor?.();
