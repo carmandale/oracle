@@ -3,7 +3,7 @@ import { countTokens as countTokensGpt5Pro } from 'gpt-tokenizer/model/gpt-5-pro
 import type { ModelConfig, ModelName, ProModelName, TokenizerFn } from './types.js';
 
 export const DEFAULT_MODEL: ModelName = 'gpt-5.1-pro';
-export const PRO_MODELS = new Set<ProModelName>(['gpt-5.1-pro', 'gpt-5-pro']);
+export const PRO_MODELS = new Set<ProModelName>(['gpt-5.1-pro', 'gpt-5-pro', 'claude-4.5-sonnet', 'claude-4.1-opus']);
 
 export const MODEL_CONFIGS: Record<ModelName, ModelConfig> = {
   'gpt-5.1-pro': {
@@ -55,6 +55,20 @@ export const MODEL_CONFIGS: Record<ModelName, ModelConfig> = {
       outputPerToken: 12 / 1_000_000,
     },
     reasoning: null,
+  },
+  'claude-4.5-sonnet': {
+    model: 'claude-4.5-sonnet',
+    tokenizer: countTokensGpt5Pro as TokenizerFn,
+    inputLimit: 200000,
+    pricing: null,
+    reasoning: { effort: 'high' },
+  },
+  'claude-4.1-opus': {
+    model: 'claude-4.1-opus',
+    tokenizer: countTokensGpt5Pro as TokenizerFn,
+    inputLimit: 200000,
+    pricing: null,
+    reasoning: { effort: 'high' },
   },
 };
 
