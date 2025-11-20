@@ -142,7 +142,9 @@ async function populateRemoteCookiesFromLocal(config: BrowserSessionConfig): Pro
   }
   config.inlineCookies = cookies;
   config.inlineCookiesSource = 'remote-local';
-  config.cookieSync = false;
+  // Force cookie application on the remote host: we already loaded local cookies,
+  // so keep sync enabled to inject them instead of skipping the step entirely.
+  config.cookieSync = true;
 }
 
 const VERSION = getCliVersion();

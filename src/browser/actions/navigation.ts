@@ -41,22 +41,19 @@ export async function ensureLoggedIn(
     returnByValue: true,
   });
   const probe = normalizeLoginProbe(outcome.result?.value);
-  if (probe.ok && probe.status > 0 && probe.status < 400 && !probe.domLoginCta && !probe.onAuthPage) {
-    const urlLabel = probe.url ?? '/backend-api/me';
-    logger(`Login check passed (HTTP ${probe.status} from ${urlLabel})`);
+  if (probe.ok && !probe.domLoginCta && !probe.onAuthPage) {
+    logger('Login check passed (no login button detected on page)');
     return;
   }
 
-  const statusLabel = probe.status ? ` (HTTP ${probe.status})` : '';
-  const errorLabel = probe.error ? ` (${probe.error})` : '';
-  const domLabel = probe.domLoginCta ? ' Login UI detected on page.' : '';
+  const domLabel = probe.domLoginCta ? ' Login button detected on page.' : '';
   const cookieHint = options.remoteSession
     ? 'The remote Chrome session is not signed into ChatGPT. Sign in there, then rerun.'
     : (options.appliedCookies ?? 0) === 0
       ? 'No ChatGPT cookies were applied; sign in to chatgpt.com in Chrome or pass inline cookies (--browser-inline-cookies[(-file)] / ORACLE_BROWSER_COOKIES_JSON).'
       : 'ChatGPT login appears missing; open chatgpt.com in Chrome to refresh the session or provide inline cookies (--browser-inline-cookies[(-file)] / ORACLE_BROWSER_COOKIES_JSON).';
 
-  throw new Error(`ChatGPT session not detected${statusLabel}. ${cookieHint}${domLabel}${errorLabel}`);
+  throw new Error(`ChatGPT session not detected.${domLabel} ${cookieHint}`);
 }
 
 export async function ensurePromptReady(Runtime: ChromeClient['Runtime'], timeoutMs: number, logger: BrowserLogger) {
@@ -135,9 +132,7 @@ type LoginProbeResult = {
 
 function buildLoginProbeExpression(timeoutMs: number): string {
   return `(() => {
-    const ENDPOINTS = ['/backend-api/me', '/backend-api/models'];
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort('timeout'), ${timeoutMs});
+    const timer = setTimeout(() => {}, ${timeoutMs});
     const pageUrl = typeof location === 'object' && location?.href ? location.href : null;
     const onAuthPage =
       typeof location === 'object' &&
@@ -181,39 +176,17 @@ function buildLoginProbeExpression(timeoutMs: number): string {
       return false;
     };
 
-    const probeEndpoint = async (endpoint) => {
-      try {
-        const response = await fetch(endpoint, { credentials: 'include', signal: controller.signal });
-        return {
-          ok: response.ok,
-          status: response.status,
-          redirected: response.redirected,
-          url: response.url || endpoint,
-          pageUrl,
-          domLoginCta: hasLoginCta(),
-          onAuthPage,
-        };
-      } catch (error) {
-        const message = error?.message ?? String(error);
-        return { ok: false, status: 0, error: message, url: endpoint, pageUrl, domLoginCta: hasLoginCta(), onAuthPage };
-      }
+    const domLoginCta = hasLoginCta();
+    clearTimeout(timer);
+    return {
+      ok: !domLoginCta && !onAuthPage,
+      status: 0,
+      redirected: false,
+      url: pageUrl,
+      pageUrl,
+      domLoginCta,
+      onAuthPage,
     };
-
-    const run = async () => {
-      let last = null;
-      for (const endpoint of ENDPOINTS) {
-        last = await probeEndpoint(endpoint);
-        if (last.ok) {
-          return last;
-        }
-        if (typeof last.status === 'number' && last.status !== 404 && last.status !== 0) {
-          return last;
-        }
-      }
-      return last ?? { ok: false, status: 0, url: ENDPOINTS[0], pageUrl };
-    };
-
-    return run().finally(() => clearTimeout(timer));
   })()`;
 }
 

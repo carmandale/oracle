@@ -130,6 +130,9 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         cookiePath: config.chromeCookiePath ?? undefined,
       });
       appliedCookies = cookieCount;
+      if (config.inlineCookies && cookieCount === 0) {
+        throw new Error('No inline cookies were applied; aborting before navigation.');
+      }
       logger(
         cookieCount > 0
           ? config.inlineCookies
