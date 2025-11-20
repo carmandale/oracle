@@ -39,9 +39,6 @@ export async function createRemoteServer(
   let busy = false;
   let cachedInlineCookies: CookieParam[] | null = null;
 
-  // Initialize host-local cookies once; refresh on demand if missing.
-  cachedInlineCookies = await loadLocalChatgptCookies(logger);
-
   server.on('request', async (req, res) => {
     if (req.method === 'GET' && req.url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -211,9 +208,14 @@ function sanitizeResult(result: BrowserRunResult): BrowserRunResult {
 
 async function loadLocalChatgptCookies(logger: (message: string) => void): Promise<CookieParam[] | null> {
   try {
-    const cookies = await loadChromeCookies({
-      targetUrl: CHATGPT_URL,
-      profile: 'Default',
+    const cookies = await Promise.resolve(
+      loadChromeCookies({
+        targetUrl: CHATGPT_URL,
+        profile: 'Default',
+      }),
+    ).catch((error) => {
+      logger(`Unable to load local ChatGPT cookies on remote host: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
     });
     if (!cookies || cookies.length === 0) {
       logger('No local ChatGPT cookies found on remote host. Please log in once; opening ChatGPT...');

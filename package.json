@@ -9,6 +9,7 @@
     "oracle-mcp": "dist/bin/oracle-mcp.js"
   },
   "scripts": {
+    "docs:list": "tsx scripts/docs-list.ts",
     "build": "tsc -p tsconfig.build.json && pnpm run build:vendor",
     "build:vendor": "mkdir -p dist/vendor && cp -R vendor/oracle-notifier dist/vendor/oracle-notifier || true",
     "start": "pnpm run build && node ./dist/scripts/run-cli.js",

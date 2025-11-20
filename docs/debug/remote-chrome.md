@@ -14,7 +14,6 @@ Command:
 oracle --engine browser \
   --remote-host 192.168.64.2:49810 \
   --remote-token cd93955b64d5afcb946a4a4a89651313 \
-  --remote-cookie-source none \
   --prompt "Remote service sanity check" \
   --wait
 ```
@@ -54,10 +53,10 @@ Actions taken on VM (tmux `vmssh`):
   ./runner pnpm run oracle -- serve --port 49810 --token cd93955b64d5afcb946a4a4a89651313
   ```
   Leave it running; verify with `lsof -nP -iTCP:49810 -sTCP:LISTEN`.
-- Sign into ChatGPT in the VM’s Chrome profile used by the service so model switching succeeds, or set `--remote-cookie-source local` on the client once remote path is stable.
+- Sign into ChatGPT in the VM’s Chrome profile used by the service so model switching succeeds.
 - Retry local command above; ensure service logs show incoming /runs.
 - Optional: switch to a fresh port/token (`oracle serve` with no args) to avoid lingering listeners.
 
 ## Notes
-- Remote mode now forces `--wait`, disables detach, and logs when routing to remote executor.
+- Remote mode forces `--wait`, disables detach, and logs when routing to remote executor.
 - Client uses NDJSON streaming; remote server serializes attachments per run and cleans temp dirs.

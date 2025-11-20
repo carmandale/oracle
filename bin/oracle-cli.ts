@@ -12,6 +12,7 @@ import type { SessionMetadata, SessionMode, BrowserSessionConfig } from '../src/
 import { sessionStore, pruneOldSessions } from '../src/sessionStore.js';
 import { DEFAULT_MODEL, runOracle, renderPromptMarkdown, readFiles } from '../src/oracle.js';
 import type { ModelName, PreviewMode, RunOracleOptions } from '../src/oracle.js';
+import { CHATGPT_URL } from '../src/browser/constants.js';
 import { createRemoteBrowserExecutor } from '../src/remote/client.js';
 import { applyHelpStyling } from '../src/cli/help.js';
 import {
@@ -97,7 +98,6 @@ interface CliOptions extends OptionValues {
   remoteChrome?: string;
   remoteHost?: string;
   remoteToken?: string;
-  remoteCookieSource?: 'local' | 'none';
   verbose?: boolean;
   debugHelp?: boolean;
   heartbeat?: number;
@@ -118,56 +118,6 @@ type ResolvedCliOptions = Omit<CliOptions, 'model'> & {
   models?: ModelName[];
   effectiveModelId?: string;
 };
-
-function normalizeRemoteCookieSource(input?: string | null): 'local' | 'none' | undefined {
-  if (!input) {
-    return undefined;
-  }
-  const normalized = input.toLowerCase();
-  if (normalized === 'local' || normalized === 'none') {
-    return normalized;
-  }
-  throw new Error('Invalid remote cookie source. Expected "local" or "none".');
-}
-
-async function populateRemoteCookiesFromLocal(config: BrowserSessionConfig): Promise<void> {
-  const filterNames =
-    Array.isArray(config.cookieNames) && config.cookieNames.length > 0
-      ? new Set(config.cookieNames)
-      : undefined;
-  const cookies = await loadChromeCookies({
-    targetUrl: config.url ?? CHATGPT_URL,
-    profile: config.chromeProfile ?? undefined,
-    explicitCookiePath: config.chromeCookiePath ?? undefined,
-    filterNames,
-  });
-  if (!cookies.length) {
-    throw new Error('Unable to locate ChatGPT cookies in the local Chrome profile.');
-  }
-  // Broaden domain coverage: duplicate ChatGPT cookies onto both chatgpt.com and chat.openai.com
-  const widened = cookies.flatMap((cookie) => {
-    const hosts = new Set<string>();
-    if (cookie.domain) {
-      hosts.add(cookie.domain);
-      if (cookie.domain.includes('chatgpt.com')) hosts.add('chat.openai.com');
-      if (cookie.domain.includes('chat.openai.com')) hosts.add('chatgpt.com');
-    } else {
-      hosts.add('chatgpt.com');
-      hosts.add('chat.openai.com');
-    }
-    return Array.from(hosts).map((domain) => ({
-      ...cookie,
-      domain,
-      path: cookie.path ?? '/',
-    }));
-  });
-
-  config.inlineCookies = widened;
-  config.inlineCookiesSource = 'remote-local';
-  // Force cookie application on the remote host: we already loaded local cookies,
-  // so keep sync enabled to inject them instead of skipping the step entirely.
-  config.cookieSync = true;
-}
 
 const VERSION = getCliVersion();
 const CLI_ENTRYPOINT = fileURLToPath(import.meta.url);
@@ -667,15 +617,15 @@ async function runRootCommand(options: CliOptions): Promise<void> {
     }
   }
 
+  const normalizedMultiModels: ModelName[] = multiModelProvided
+    ? Array.from(new Set(options.models!.map((entry) => resolveApiModel(entry))))
+    : [];
   const cliModelArg = normalizeModelOption(options.model) || (multiModelProvided ? '' : DEFAULT_MODEL);
   const resolvedModelCandidate: ModelName = multiModelProvided
     ? normalizedMultiModels[0]
     : engine === 'browser'
       ? inferModelFromLabel(cliModelArg || DEFAULT_MODEL)
       : resolveApiModel(cliModelArg || DEFAULT_MODEL);
-  const normalizedMultiModels: ModelName[] = multiModelProvided
-    ? Array.from(new Set(options.models!.map((entry) => resolveApiModel(entry))))
-    : [];
   const primaryModelCandidate = normalizedMultiModels[0] ?? resolvedModelCandidate;
   const isGemini = primaryModelCandidate.startsWith('gemini');
   const isCodex = primaryModelCandidate.startsWith('gpt-5.1-codex');
