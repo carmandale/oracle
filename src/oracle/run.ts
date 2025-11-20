@@ -36,6 +36,7 @@ import { startOscProgress } from './oscProgress.js';
 import { getCliVersion } from '../version.js';
 import { createFsAdapter } from './fsAdapter.js';
 import { resolveGeminiModelId } from './gemini.js';
+import { resolveClaudeModelId } from './claude.js';
 
 const isTty = process.stdout.isTTY && chalk.level > 0;
 const dim = (text: string): string => (isTty ? kleur.dim(text) : text);
@@ -82,10 +83,17 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
     if (model.startsWith('gemini')) {
       return optionsApiKey ?? process.env.GEMINI_API_KEY;
     }
+    if (model.startsWith('claude')) {
+      return optionsApiKey ?? process.env.ANTHROPIC_API_KEY;
+    }
     return undefined;
   };
 
-  const envVar = options.model.startsWith('gpt') ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
+  const envVar = options.model.startsWith('gpt')
+    ? 'OPENAI_API_KEY'
+    : options.model.startsWith('gemini')
+      ? 'GEMINI_API_KEY'
+      : 'ANTHROPIC_API_KEY';
   const apiKey = getApiKeyForModel(options.model);
   if (!apiKey) {
     throw new PromptValidationError(`Missing ${envVar}. Set it via the environment or a .env file.`, {
@@ -238,14 +246,22 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
     };
   }
 
-  const apiEndpoint = modelConfig.model.startsWith('gemini') ? undefined : baseUrl;
+  const apiEndpoint = modelConfig.model.startsWith('gemini')
+    ? undefined
+    : modelConfig.model.startsWith('claude')
+      ? process.env.ANTHROPIC_BASE_URL ?? baseUrl
+      : baseUrl;
   const clientInstance: ClientLike =
     client ??
     clientFactory(apiKey, {
       baseUrl: apiEndpoint,
       azure: options.azure,
       model: options.model,
-      resolvedModelId: effectiveModelId,
+      resolvedModelId: modelConfig.model.startsWith('claude')
+        ? resolveClaudeModelId(effectiveModelId as ModelName)
+        : modelConfig.model.startsWith('gemini')
+          ? resolveGeminiModelId(effectiveModelId as ModelName)
+          : effectiveModelId,
     });
   logVerbose('Dispatching request to API...');
   if (options.verbose) {
