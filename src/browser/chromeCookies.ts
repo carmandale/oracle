@@ -30,10 +30,12 @@ export async function loadChromeCookies({
   const urlsToCheck = Array.from(new Set([stripQuery(targetUrl), ...COOKIE_URLS]));
   const merged = new Map<string, CookieParam>();
   const cookieFile = await resolveCookieFilePath({ explicitPath: explicitCookiePath, profile });
-  const cookiesPath = await materializeCookieFile(cookieFile);
+  const cookiesPath = await materializeCookieFile(cookieFile); // returns the copied file (or source on non-Windows)
+  const fallbackDir = await ensureCookiesDirForFallback(cookiesPath);
   if (process.env.ORACLE_DEBUG_COOKIES === '1') {
     // eslint-disable-next-line no-console
-    console.log(`[cookies] resolved cookie path: ${cookiesPath}`);
+    console.log(`[cookies] resolved cookie file: ${cookiesPath}`);
+    console.log(`[cookies] fallback dir for chrome-cookies-secure: ${fallbackDir}`);
   }
 
   await ensureMacKeychainReadable();
@@ -41,7 +43,7 @@ export async function loadChromeCookies({
   for (const url of urlsToCheck) {
     let raw: unknown;
     try {
-      const pathForSecure = await adaptPathForChromeCookies(cookiesPath);
+      const pathForSecure = await adaptPathForChromeCookies(fallbackDir);
       raw = await settleWithTimeout(
         chromeCookies.getCookiesPromised(url, 'puppeteer', pathForSecure),
         COOKIE_READ_TIMEOUT_MS,
@@ -191,8 +193,8 @@ async function resolveCookieFilePath({
 async function adaptPathForChromeCookies(resolved: string): Promise<string> {
   const stat = await fs.stat(resolved).catch(() => null);
   if (stat?.isFile()) {
-    // chrome-cookies-secure appends "Cookies" if given a directory; give it the file itself.
-    return resolved;
+    // chrome-cookies-secure appends "Cookies" when given a directory; if we already have the file, return its directory.
+    return path.dirname(resolved);
   }
   return resolved;
 }

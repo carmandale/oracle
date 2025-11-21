@@ -59,6 +59,7 @@ export async function loadWindowsCookies(dbPath: string, filterNames?: Set<strin
   }
   const localStatePath = await locateLocalState(dbPath);
   const cookiesCopy = await copyLockedFile(dbPath, 'Cookies'); // name the copy exactly "Cookies"
+  const cookiesDirForFallback = await ensureCookiesDirForFallback(cookiesCopy);
   const localStateCopy = await copyLockedFile(localStatePath, 'Local State');
   const aesKey = await extractWindowsAesKey(localStateCopy);
   const rows = await readChromeCookiesDb(cookiesCopy, filterNames);
@@ -78,7 +79,7 @@ export async function loadWindowsCookies(dbPath: string, filterNames?: Set<strin
   }
   if (process.env.ORACLE_DEBUG_COOKIES === '1') {
     // eslint-disable-next-line no-console
-    console.log(`[cookies] windows decrypt decoded ${cookies.length} cookies from ${cookiesCopy}`);
+    console.log(`[cookies] windows decrypt decoded ${cookies.length} cookies from ${cookiesCopy} (fallback dir ${cookiesDirForFallback})`);
   }
   return cookies.filter((c) => c.value);
 }
@@ -173,6 +174,14 @@ try {
     console.log(`[cookies] copied locked file ${sourcePath} -> ${tempPath}`);
   }
   return tempPath;
+}
+
+// Create a directory containing a file named "Cookies" for chrome-cookies-secure fallback
+async function ensureCookiesDirForFallback(cookieFile: string): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'oracle-cookies-secure-'));
+  const target = path.join(dir, 'Cookies');
+  await fs.copyFile(cookieFile, target);
+  return dir;
 }
 
 function allSqlite<T>(db: sqlite3.Database, sql: string, params: unknown[]): Promise<T[]> {
