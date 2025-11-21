@@ -9,7 +9,6 @@ import type {
   ClientLike,
   OracleResponse,
   OracleRequestBody,
-  PreviewMode,
   ResponseStreamLike,
   RunOracleDeps,
   RunOracleOptions,
@@ -37,6 +36,7 @@ import { createFsAdapter } from './fsAdapter.js';
 import { resolveGeminiModelId } from './gemini.js';
 import { resolveClaudeModelId } from './claude.js';
 import { renderMarkdownAnsi } from '../cli/markdownRenderer.js';
+import { formatTokenEstimate, formatTokenValue, resolvePreviewMode } from './runUtils.js';
 
 const isTty = process.stdout.isTTY && chalk.level > 0;
 const dim = (text: string): string => (isTty ? kleur.dim(text) : text);
@@ -185,16 +185,10 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
     storeResponse: useBackground,
   });
   const estimatedInputTokens = estimateRequestTokens(requestBody, modelConfig);
-  const formatTokenEstimate = (value: number): string => {
-    if (value >= 1000) {
-      const abbreviated = Math.floor(value / 100) / 10; // 4,252 -> 4.2
-      const text = `${abbreviated.toFixed(1).replace(/\\.0$/, '')}k`;
-      return richTty ? chalk.green(text) : text;
-    }
-    const text = value.toLocaleString();
-    return richTty ? chalk.green(text) : text;
-  };
-  const tokenLabel = formatTokenEstimate(estimatedInputTokens);
+  const tokenLabel = formatTokenEstimate(
+    estimatedInputTokens,
+    (text) => (richTty ? chalk.green(text) : text),
+  );
   const fileLabel = richTty ? chalk.magenta(fileCount.toString()) : fileCount.toString();
   const filesPhrase = fileCount === 0 ? 'no files' : `${fileLabel} files`;
   const headerLine = `Calling ${headerModelLabel} — ${tokenLabel} tokens, ${filesPhrase}.`;
@@ -428,6 +422,7 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
       write('\n');
     } else {
       ensureAnswerHeader();
+      // Render markdown to ANSI in rich TTYs unless the caller opts out with --render-plain.
       const printable = answerText
         ? renderPlain || !richTty
           ? answerText
@@ -464,6 +459,7 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
   const tokensLabel = options.verbose ? 'tokens (input/output/reasoning/total)' : 'tok(i/o/r/t)';
   statsParts.push(`${tokensLabel}=${tokensDisplay}`);
   if (options.verbose) {
+    // Only surface request-vs-response deltas when verbose is explicitly requested to keep default stats compact.
     const actualInput = usage.input_tokens;
     if (actualInput !== undefined) {
       const delta = actualInput - estimatedInputTokens;
@@ -490,31 +486,6 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
     usage: { inputTokens, outputTokens, reasoningTokens, totalTokens, ...(cost != null ? { cost } : {}) },
     elapsedMs,
   };
-}
-
-function formatTokenValue(
-  value: number,
-  usage: OracleResponse['usage'],
-  index: number,
-): string {
-  const estimatedFlag =
-    (index === 0 && usage?.input_tokens == null) ||
-    (index === 1 && usage?.output_tokens == null) ||
-    (index === 2 && usage?.reasoning_tokens == null) ||
-    (index === 3 && usage?.total_tokens == null);
-  const text = value.toLocaleString();
-  return estimatedFlag ? `${text}*` : text;
-}
-
-function resolvePreviewMode(value: boolean | string | undefined): PreviewMode | undefined {
-  const allowed = new Set<PreviewMode>(['summary', 'json', 'full']);
-  if (typeof value === 'string' && value.length > 0) {
-    return allowed.has(value as PreviewMode) ? (value as PreviewMode) : 'summary';
-  }
-  if (value) {
-    return 'summary';
-  }
-  return undefined;
 }
 
 export function extractTextOutput(response: OracleResponse): string {
@@ -566,9 +537,7 @@ async function executeBackgroundResponse(params: BackgroundExecutionParams): Pro
   let heartbeatActive = false;
   let stopHeartbeat: (() => void) | null = null;
   const stopHeartbeatNow = () => {
-    if (!heartbeatActive) {
-      return;
-    }
+    if (!heartbeatActive) return;
     heartbeatActive = false;
     stopHeartbeat?.();
     stopHeartbeat = null;
@@ -616,10 +585,10 @@ async function pollBackgroundResponse(params: BackgroundPollParams): Promise<Ora
   let response = initialResponse;
   let firstCycle = true;
   let lastStatus: string | undefined = response.status;
-  // biome-ignore lint/nursery/noUnnecessaryConditions: intentional polling loop
+  // biome-ignore lint/nursery/noUnnecessaryConditions: intentional polling loop.
   while (true) {
     const status = response.status ?? 'completed';
-    // biome-ignore lint/nursery/noUnnecessaryConditions: guard only for first iteration
+    // biome-ignore lint/nursery/noUnnecessaryConditions: firstCycle toggles immediately; keep for clarity in logs.
     if (firstCycle) {
       firstCycle = false;
       log(dim(`API background response status=${status}. We'll keep retrying automatically.`));
