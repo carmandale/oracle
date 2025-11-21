@@ -171,6 +171,7 @@ async function expandWithNativeGlob(partitioned: PartitionedFiles, cwd: string):
     ignore: partitioned.excludePatterns,
     onlyFiles: true,
     followSymbolicLinks: false,
+    suppressErrors: true,
   })) as string[];
   const resolved = matches.map((match) => path.resolve(cwd, match));
   const filtered = resolved.filter((filePath) => !isGitignored(filePath, gitignoreSets));
@@ -181,7 +182,14 @@ async function expandWithNativeGlob(partitioned: PartitionedFiles, cwd: string):
 type GitignoreSet = { dir: string; patterns: string[] };
 
 async function loadGitignoreSets(cwd: string): Promise<GitignoreSet[]> {
-  const gitignorePaths = await fg('**/.gitignore', { cwd, dot: true, absolute: true, onlyFiles: true, followSymbolicLinks: false });
+  const gitignorePaths = await fg('**/.gitignore', {
+    cwd,
+    dot: true,
+    absolute: true,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    suppressErrors: true,
+  });
   const sets: GitignoreSet[] = [];
   for (const filePath of gitignorePaths) {
     try {

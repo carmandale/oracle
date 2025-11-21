@@ -415,6 +415,8 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
     } else {
       log('');
     }
+    // Keep the write sink aligned with stdout by adding a trailing break after streamed content.
+    write('\n\n');
   }
 
   logVerbose(`Response status: ${response.status ?? 'completed'}`);
