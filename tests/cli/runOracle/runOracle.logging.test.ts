@@ -259,6 +259,35 @@ describe('api key logging', () => {
     expect(writes.join('')).toContain('Hello world');
   });
 
+  test('non-streamed answers keep their first character', async () => {
+    const stream = new MockStream([], buildResponse({
+      output: [
+        {
+          type: 'message',
+          content: [{ type: 'text', text: 'Happy to help' }],
+        },
+      ],
+    }));
+    const client = new MockClient(stream);
+    const writes: string[] = [];
+
+    await runOracle(
+      { prompt: 'hi', model: 'gpt-5.1-pro', background: false },
+      {
+        apiKey: 'sk-test-1234',
+        client,
+        log: () => {},
+        write: (chunk) => {
+          writes.push(chunk);
+          return true;
+        },
+      },
+    );
+
+    const combined = writes.join('');
+    expect(combined.startsWith('Happy to help')).toBe(true);
+  });
+
   test('streamed answers get a newline before verbose footer', async () => {
     const stream = new MockStream([{ type: 'response.output_text.delta', delta: 'Yo bro.' }], buildResponse());
     const client = new MockClient(stream);

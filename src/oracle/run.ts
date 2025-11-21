@@ -432,7 +432,10 @@ export async function runOracle(options: RunOracleOptions, deps: RunOracleDeps =
           ? answerText
           : renderMarkdownAnsi(answerText)
         : chalk.dim('(no text output)');
-      log(printable);
+      write(printable);
+      if (!printable.endsWith('\n')) {
+        write('\n');
+      }
       log('');
     }
   }

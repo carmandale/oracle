@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -44,6 +45,7 @@ vi.mock('../../src/sessionStore.ts', () => ({
   sessionStore: sessionStoreMock,
 }));
 
+import { SESSIONS_DIR } from '../../src/sessionManager.ts';
 import type { SessionMetadata, SessionModelRun } from '../../src/sessionManager.ts';
 import type { ModelName } from '../../src/oracle.ts';
 import { performSessionRun } from '../../src/cli/sessionRunner.ts';
@@ -85,6 +87,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   Object.values(sessionStoreMock).forEach((fn) => {
     if (typeof fn === 'function' && 'mockReset' in fn) {
@@ -98,6 +101,10 @@ beforeEach(() => {
     writeChunk: vi.fn(),
     stream: { end: vi.fn() },
   });
+  sessionStoreMock.readModelLog.mockResolvedValue('model log body');
+  sessionStoreMock.sessionsDir.mockReturnValue('/tmp/.oracle/sessions');
+  vi.spyOn(fsPromises, 'mkdir').mockResolvedValue(undefined);
+  vi.spyOn(fsPromises, 'writeFile').mockResolvedValue(undefined);
 });
 
 describe('performSessionRun', () => {
@@ -139,6 +146,35 @@ describe('performSessionRun', () => {
       expect.objectContaining({ status: 'completed' }),
     );
     expect(vi.mocked(sendSessionNotification)).toHaveBeenCalled();
+  });
+
+  test('writes final assistant output to disk for single-model runs', async () => {
+    const liveResult: RunOracleResult = {
+      mode: 'live',
+      usage: { inputTokens: 1, outputTokens: 2, reasoningTokens: 0, totalTokens: 3 },
+      elapsedMs: 500,
+      response: {
+        id: 'resp',
+        usage: {},
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'Saved text' }] }],
+      },
+    };
+    vi.mocked(runOracle).mockResolvedValue(liveResult);
+
+    await performSessionRun({
+      sessionMeta: baseSessionMeta,
+      runOptions: { ...baseRunOptions, writeOutputPath: '/tmp/out.md' },
+      mode: 'api',
+      cwd: '/tmp',
+      log,
+      write,
+      version: cliVersion,
+    });
+
+    const writeCalls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(writeCalls).toContainEqual(['/tmp/out.md', expect.stringContaining('Saved text\n'), 'utf8']);
+    const logLines = log.mock.calls.map((c) => c[0]).join('\n');
+    expect(logLines).toContain('Saved assistant output');
   });
 
   test('streams per-model output as each model finishes when TTY', async () => {
@@ -214,6 +250,48 @@ describe('performSessionRun', () => {
     } else {
       (process.stdout as { isTTY?: boolean }).isTTY = originalTty;
     }
+  });
+
+  test('writes per-model outputs during multi-model runs when writeOutputPath provided', async () => {
+    const summary: MultiModelRunSummary = {
+      fulfilled: [
+        {
+          model: 'gpt-5.1-pro' as ModelName,
+          usage: { inputTokens: 1, outputTokens: 2, reasoningTokens: 0, totalTokens: 3, cost: 0.01 },
+          answerText: 'pro answer',
+          logPath: 'log-pro',
+        },
+        {
+          model: 'gemini-3-pro' as ModelName,
+          usage: { inputTokens: 1, outputTokens: 2, reasoningTokens: 0, totalTokens: 3, cost: 0.02 },
+          answerText: 'gemini answer',
+          logPath: 'log-gemini',
+        },
+      ],
+      rejected: [],
+      elapsedMs: 1200,
+    };
+    vi.mocked(runMultiModelApiSession).mockResolvedValue(summary);
+
+    await performSessionRun({
+      sessionMeta: {
+        ...baseSessionMeta,
+        models: [
+          { model: 'gpt-5.1-pro', status: 'pending' } as SessionModelRun,
+          { model: 'gemini-3-pro', status: 'pending' } as SessionModelRun,
+        ],
+      },
+      runOptions: { ...baseRunOptions, models: ['gpt-5.1-pro', 'gemini-3-pro'], writeOutputPath: '/tmp/out.md' },
+      mode: 'api',
+      cwd: '/tmp',
+      log,
+      write,
+      version: cliVersion,
+    });
+
+    const writeCalls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(writeCalls).toContainEqual(['/tmp/out.gpt-5.1-pro.md', expect.stringContaining('pro answer\n'), 'utf8']);
+    expect(writeCalls).toContainEqual(['/tmp/out.gemini-3-pro.md', expect.stringContaining('gemini answer\n'), 'utf8']);
   });
 
   test('prints one aggregate header and colored summary for multi-model runs', async () => {
@@ -509,6 +587,90 @@ describe('performSessionRun', () => {
       'gpt-5.1-pro',
       expect.objectContaining({ status: 'completed' }),
     );
+  });
+
+  test('writes browser answers to disk when writeOutputPath provided', async () => {
+    vi.mocked(runBrowserSessionExecution).mockResolvedValue({
+      usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 0, totalTokens: 15 },
+      elapsedMs: 500,
+      runtime: { chromePid: 1, chromePort: 9222, userDataDir: '/tmp/chrome' },
+      answerText: 'browser answer',
+    });
+
+    await performSessionRun({
+      sessionMeta: baseSessionMeta,
+      runOptions: { ...baseRunOptions, writeOutputPath: '/tmp/browser-out.md' },
+      mode: 'browser',
+      browserConfig: { chromePath: null },
+      cwd: '/tmp',
+      log,
+      write,
+      version: cliVersion,
+    });
+
+    const writeCalls = (fsPromises.writeFile as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(writeCalls).toContainEqual(['/tmp/browser-out.md', expect.stringContaining('browser answer\n'), 'utf8']);
+  });
+
+  test('write-output failures warn but keep session successful', async () => {
+    const liveResult: RunOracleResult = {
+      mode: 'live',
+      usage: { inputTokens: 5, outputTokens: 5, reasoningTokens: 0, totalTokens: 10 },
+      elapsedMs: 300,
+      response: {
+        id: 'resp',
+        usage: {},
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'content' }] }],
+      },
+    };
+    vi.mocked(runOracle).mockResolvedValue(liveResult);
+    vi.mocked(fsPromises.writeFile).mockRejectedValueOnce(new Error('EACCES'));
+
+    await expect(
+      performSessionRun({
+        sessionMeta: baseSessionMeta,
+        runOptions: { ...baseRunOptions, writeOutputPath: '/tmp/out.md' },
+        mode: 'api',
+        cwd: '/tmp',
+        log,
+        write,
+        version: cliVersion,
+      }),
+    ).resolves.not.toThrow();
+
+    const finalUpdate = sessionStoreMock.updateSession.mock.calls.at(-1)?.[1];
+    expect(finalUpdate).toMatchObject({ status: 'completed' });
+    const logLines = log.mock.calls.map((c) => c[0]).join('\n');
+    expect(logLines).toContain('write-output failed');
+  });
+
+  test('refuses to write inside session storage path', async () => {
+    const sessionsDir = SESSIONS_DIR;
+    const liveResult: RunOracleResult = {
+      mode: 'live',
+      usage: { inputTokens: 1, outputTokens: 1, reasoningTokens: 0, totalTokens: 2 },
+      elapsedMs: 100,
+      response: {
+        id: 'resp',
+        usage: {},
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'blocked' }] }],
+      },
+    };
+    vi.mocked(runOracle).mockResolvedValue(liveResult);
+
+    await performSessionRun({
+      sessionMeta: baseSessionMeta,
+      runOptions: { ...baseRunOptions, writeOutputPath: path.join(sessionsDir, 'out.md') },
+      mode: 'api',
+      cwd: '/tmp',
+      log,
+      write,
+      version: cliVersion,
+    });
+
+    expect(fsPromises.writeFile).not.toHaveBeenCalled();
+    const logLines = log.mock.calls.map((c) => c[0]).join('\n');
+    expect(logLines).toContain('refusing to write inside session storage');
   });
 
   test('records metadata when browser automation fails', async () => {
