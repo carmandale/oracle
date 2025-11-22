@@ -21,7 +21,7 @@ Oracle reads an optional per-user config from `~/.oracle/config.json`. The file 
     chromeProfile: "Default",
     chromePath: null,
     url: null,
-    debugPort: null,        // fixed DevTools port (useful on WSL firewalls)
+    debugPort: null,        // fixed DevTools port (useful on WSL firewalls); env: ORACLE_BROWSER_PORT
     timeoutMs: 900000,
     inputTimeoutMs: 30000,
     headless: false,

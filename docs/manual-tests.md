@@ -19,7 +19,7 @@ and run the live API suite before shipping major transport changes.
 
 ### Quick browser port smoke
 
-- `./runner pnpm test:browser` — launches headless Chrome and checks the DevTools endpoint is reachable. Set `BROWSER_TEST_PORT` to reuse a fixed port (handy if you already opened a firewall rule).
+- `./runner pnpm test:browser` — launches headless Chrome and checks the DevTools endpoint is reachable. Set `ORACLE_BROWSER_PORT` (or `ORACLE_BROWSER_DEBUG_PORT`) to reuse a fixed port (handy if you already opened a firewall rule).
 
 ### Lightweight Browser CLI (manual exploration)
 

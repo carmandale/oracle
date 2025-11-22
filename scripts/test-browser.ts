@@ -12,7 +12,7 @@ import os from 'node:os';
 import { readFileSync } from 'node:fs';
 
 const DEFAULT_PORT = 45871;
-const port = normalizePort(process.env.BROWSER_TEST_PORT) ?? DEFAULT_PORT;
+const port = normalizePort(process.env.ORACLE_BROWSER_PORT ?? process.env.ORACLE_BROWSER_DEBUG_PORT) ?? DEFAULT_PORT;
 const hostHint = resolveWslHost();
 const targetHost = hostHint ?? '127.0.0.1';
 

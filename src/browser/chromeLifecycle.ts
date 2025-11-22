@@ -239,7 +239,7 @@ function isWsl(): boolean {
 }
 
 function parseDebugPortEnv(): number | null {
-  const raw = process.env.ORACLE_BROWSER_DEBUG_PORT;
+  const raw = process.env.ORACLE_BROWSER_PORT ?? process.env.ORACLE_BROWSER_DEBUG_PORT;
   if (!raw) return null;
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value) || value <= 0 || value > 65535) {
