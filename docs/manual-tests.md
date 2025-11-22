@@ -17,6 +17,10 @@ and run the live API suite before shipping major transport changes.
 
 ## Test Cases
 
+### Quick browser port smoke
+
+- `./runner pnpm test:browser` — launches headless Chrome and checks the DevTools endpoint is reachable. Set `BROWSER_TEST_PORT` to reuse a fixed port (handy if you already opened a firewall rule).
+
 ### Lightweight Browser CLI (manual exploration)
 
 Before running any agent-driven debugging, you can rely on the TypeScript CLI in `scripts/browser-tools.ts`:

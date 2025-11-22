@@ -40,6 +40,7 @@ export interface BrowserAutomationConfig {
   chromePath?: string | null;
   url?: string;
   timeoutMs?: number;
+  debugPort?: number | null;
   inputTimeoutMs?: number;
   cookieSync?: boolean;
   cookieNames?: string[] | null;
@@ -72,6 +73,7 @@ export interface BrowserRunResult {
   answerChars: number;
   chromePid?: number;
   chromePort?: number;
+  chromeHost?: string;
   userDataDir?: string;
 }
 
@@ -81,6 +83,7 @@ export type ResolvedBrowserConfig = Required<
   chromeProfile?: string | null;
   chromePath?: string | null;
   desiredModel?: string | null;
+  debugPort?: number | null;
   remoteChrome?: { host: string; port: number } | null;
   inlineCookiesSource?: string | null;
 };

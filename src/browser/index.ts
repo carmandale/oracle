@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { resolveBrowserConfig } from './config.js';
@@ -10,6 +10,7 @@ import {
   connectToChrome,
   connectToRemoteChrome,
   closeRemoteChromeTarget,
+  describeDevtoolsFirewallHint,
 } from './chromeLifecycle.js';
 import { syncCookies } from './cookies.js';
 import {
@@ -70,7 +71,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     return runRemoteBrowserMode(promptText, attachments, config, logger, options);
   }
 
-  const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'oracle-browser-'));
+  const userDataDir = await mkdtemp(path.join(await resolveUserDataBaseDir(), 'oracle-browser-'));
   logger(`Created temporary Chrome profile at ${userDataDir}`);
 
   const chrome = await launchChrome(config, userDataDir, logger);
@@ -91,7 +92,17 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
   let stopThinkingMonitor: (() => void) | null = null;
 
   try {
-    client = await connectToChrome(chrome.port, logger);
+    try {
+      client = await connectToChrome(chrome.port, logger, chrome.host);
+    } catch (error) {
+      const hint = describeDevtoolsFirewallHint(chrome.host, chrome.port);
+      const parts = [`Could not connect to Chrome DevTools at ${chrome.host ?? '127.0.0.1'}:${chrome.port}.`];
+      if (hint) {
+        hint.split('\n').forEach((line) => logger(line));
+        parts.push('See the firewall instructions above, then rerun.');
+      }
+      throw new Error(parts.join(' '), { cause: error instanceof Error ? error : undefined });
+    }
     const markConnectionLost = () => {
       connectionClosedUnexpectedly = true;
     };
@@ -207,6 +218,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       answerChars,
       chromePid: chrome.pid,
       chromePort: chrome.port,
+      chromeHost: chrome.host,
       userDataDir,
     };
   } catch (error) {
@@ -377,6 +389,7 @@ async function runRemoteBrowserMode(
       answerChars,
       chromePid: undefined,
       chromePort: port,
+      chromeHost: host,
       userDataDir: undefined,
     };
   } catch (error) {
@@ -495,6 +508,36 @@ function startThinkingStatusMonitor(
     stopped = true;
     clearInterval(interval);
   };
+}
+
+async function resolveUserDataBaseDir(): Promise<string> {
+  // On WSL, Chrome launched via Windows can choke on UNC paths; prefer a Windows-backed temp folder.
+  if (isWsl()) {
+    const candidates = [
+      '/mnt/c/Users/Public/AppData/Local/Temp',
+      '/mnt/c/Temp',
+      '/mnt/c/Windows/Temp',
+    ];
+    for (const candidate of candidates) {
+      try {
+        await mkdir(candidate, { recursive: true });
+        return candidate;
+      } catch {
+        // try next
+      }
+    }
+  }
+  return os.tmpdir();
+}
+
+function isWsl(): boolean {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+  if (process.env.WSL_DISTRO_NAME) {
+    return true;
+  }
+  return os.release().toLowerCase().includes('microsoft');
 }
 
 async function readThinkingStatus(Runtime: ChromeClient['Runtime']): Promise<string | null> {

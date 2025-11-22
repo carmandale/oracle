@@ -1,22 +1,39 @@
 import { rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import os from 'node:os';
+import net from 'node:net';
 import CDP from 'chrome-remote-interface';
-import { launch, type LaunchedChrome } from 'chrome-launcher';
+import { launch, Launcher, type LaunchedChrome } from 'chrome-launcher';
 import type { BrowserLogger, ResolvedBrowserConfig, ChromeClient } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
 export async function launchChrome(config: ResolvedBrowserConfig, userDataDir: string, logger: BrowserLogger) {
-  const chromeFlags = buildChromeFlags(config.headless);
-  const launcher = await launch({
-    chromePath: config.chromePath ?? undefined,
-    chromeFlags,
-    userDataDir,
-  });
+  const connectHost = resolveRemoteDebugHost();
+  const debugBindAddress = connectHost && connectHost !== '127.0.0.1' ? '0.0.0.0' : connectHost;
+  const chromeFlags = buildChromeFlags(config.headless, debugBindAddress);
+  const debugPort = config.debugPort ?? parseDebugPortEnv();
+  const usePatchedLauncher = Boolean(connectHost && connectHost !== '127.0.0.1');
+  const launcher = usePatchedLauncher
+    ? await launchWithCustomHost({
+        chromeFlags,
+        chromePath: config.chromePath ?? undefined,
+        userDataDir,
+        host: connectHost ?? '127.0.0.1',
+        requestedPort: debugPort ?? undefined,
+      })
+    : await launch({
+        chromePath: config.chromePath ?? undefined,
+        chromeFlags,
+        userDataDir,
+        port: debugPort ?? undefined,
+      });
   const pidLabel = typeof launcher.pid === 'number' ? ` (pid ${launcher.pid})` : '';
-  logger(`Launched Chrome${pidLabel} on port ${launcher.port}`);
-  return launcher;
+  const hostLabel = connectHost ? ` on ${connectHost}` : '';
+  logger(`Launched Chrome${pidLabel} on port ${launcher.port}${hostLabel}`);
+  return Object.assign(launcher, { host: connectHost ?? '127.0.0.1' }) as LaunchedChrome & { host?: string };
 }
 
 export function registerTerminationHooks(
@@ -83,10 +100,29 @@ export async function hideChromeWindow(chrome: LaunchedChrome, logger: BrowserLo
   }
 }
 
-export async function connectToChrome(port: number, logger: BrowserLogger): Promise<ChromeClient> {
-  const client = await CDP({ port });
+export async function connectToChrome(port: number, logger: BrowserLogger, host?: string): Promise<ChromeClient> {
+  const client = await CDP({ port, host });
   logger('Connected to Chrome DevTools protocol');
   return client;
+}
+
+export function describeDevtoolsFirewallHint(host: string | undefined, port: number): string | null {
+  if (!isWsl()) {
+    return null;
+  }
+  const target = `${host ?? '127.0.0.1'}:${port}`;
+  const portRule = `New-NetFirewallRule -DisplayName 'Chrome DevTools ${port}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port}`;
+  const programRule =
+    "New-NetFirewallRule -DisplayName 'Chrome DevTools (chrome.exe)' -Direction Inbound -Action Allow -Program 'C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe' -Protocol TCP";
+  return [
+    `DevTools port ${target} is blocked from WSL.`,
+    '',
+    'PowerShell (admin):',
+    portRule,
+    programRule,
+    '',
+    'Re-run the same oracle command after adding the rule.',
+  ].join('\n');
 }
 
 export interface RemoteChromeConnection {
@@ -136,7 +172,7 @@ export async function closeRemoteChromeTarget(
   }
 }
 
-function buildChromeFlags(headless: boolean): string[] {
+function buildChromeFlags(headless: boolean, debugBindAddress?: string | null): string[] {
   const flags = [
     '--disable-background-networking',
     '--disable-background-timer-throttling',
@@ -158,9 +194,125 @@ function buildChromeFlags(headless: boolean): string[] {
     '--use-mock-keychain',
   ];
 
+  if (debugBindAddress) {
+    flags.push(`--remote-debugging-address=${debugBindAddress}`);
+  }
+
   if (headless) {
     flags.push('--headless=new');
   }
 
   return flags;
+}
+
+function resolveRemoteDebugHost(): string | null {
+  const override = process.env.ORACLE_BROWSER_REMOTE_DEBUG_HOST?.trim() || process.env.WSL_HOST_IP?.trim();
+  if (override) {
+    return override;
+  }
+  if (!isWsl()) {
+    return null;
+  }
+  try {
+    const resolv = readFileSync('/etc/resolv.conf', 'utf8');
+    for (const line of resolv.split('\n')) {
+      const match = line.match(/^nameserver\s+([0-9.]+)/);
+      if (match?.[1]) {
+        return match[1];
+      }
+    }
+  } catch {
+    // ignore; fall back to localhost
+  }
+  return null;
+}
+
+function isWsl(): boolean {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+  if (process.env.WSL_DISTRO_NAME) {
+    return true;
+  }
+  const release = os.release();
+  return release.toLowerCase().includes('microsoft');
+}
+
+function parseDebugPortEnv(): number | null {
+  const raw = process.env.ORACLE_BROWSER_DEBUG_PORT;
+  if (!raw) return null;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value <= 0 || value > 65535) {
+    return null;
+  }
+  return value;
+}
+
+async function launchWithCustomHost({
+  chromeFlags,
+  chromePath,
+  userDataDir,
+  host,
+  requestedPort,
+}: {
+  chromeFlags: string[];
+  chromePath?: string | null;
+  userDataDir: string;
+  host: string | null;
+  requestedPort?: number;
+}): Promise<LaunchedChrome & { host?: string }> {
+  const launcher = new Launcher({
+    chromePath: chromePath ?? undefined,
+    chromeFlags,
+    userDataDir,
+    port: requestedPort ?? undefined,
+  });
+
+  if (host) {
+    const patched = launcher as unknown as { isDebuggerReady?: () => Promise<void>; port?: number };
+    patched.isDebuggerReady = function patchedIsDebuggerReady(this: Launcher & { port?: number }): Promise<void> {
+      const debugPort = this.port ?? 0;
+      if (!debugPort) {
+        return Promise.reject(new Error('Missing Chrome debug port'));
+      }
+      return new Promise((resolve, reject) => {
+        const client = net.createConnection({ port: debugPort, host });
+        const cleanup = () => {
+          client.removeAllListeners();
+          client.end();
+          client.destroy();
+          client.unref();
+        };
+        client.once('error', (err) => {
+          cleanup();
+          reject(err);
+        });
+        client.once('connect', () => {
+          cleanup();
+          resolve();
+        });
+      });
+    };
+  }
+
+  try {
+    await launcher.launch();
+  } catch (error) {
+    const hint = describeDevtoolsFirewallHint(host ?? undefined, launcher.port ?? 0);
+    if (hint) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)}. ${hint}`, {
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+    throw error;
+  }
+  const kill = async () => launcher.kill();
+  return {
+    pid: launcher.pid ?? undefined,
+    port: launcher.port ?? 0,
+    process: launcher.chromeProcess as unknown as NonNullable<LaunchedChrome['process']>,
+    kill,
+    host: host ?? undefined,
+    remoteDebuggingPipes: launcher.remoteDebuggingPipes,
+  } as unknown as LaunchedChrome & { host?: string };
 }

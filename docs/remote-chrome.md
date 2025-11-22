@@ -22,6 +22,8 @@ pnpm run oracle -- --engine browser \
   --file logs/today.txt
 ```
 
+- Tip: If you’re running locally (not remote) but need to reuse a single, firewall-open port on Windows/WSL, use `--browser-port <port>` instead of relying on a random DevTools port.
+
 Key behaviors:
 
 - Oracle opens a dedicated tab targeting `--browser-url` (defaults to `https://chatgpt.com/`), runs the whole automation there, then closes the tab when done. Other tabs remain untouched.

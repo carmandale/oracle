@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Reject prompts shorter than 20 characters with a friendly hint (prevents accidental single-character runs). Override via ORACLE_MIN_PROMPT_CHARS for automated environments.
+- Browser engine: `--browser-port` (alias `--browser-debug-port`) pins the DevTools port so WSL/Windows users can open a single firewall rule instead of chasing random ports.
 
 ## 1.3.0 — 2025-11-19
 

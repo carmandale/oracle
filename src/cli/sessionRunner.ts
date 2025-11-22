@@ -57,11 +57,6 @@ export async function performSessionRun({
       if (runOptions.model.startsWith('gemini')) {
         throw new Error('Gemini models are not available in browser mode. Re-run with --engine api.');
       }
-      if (process.platform !== 'darwin') {
-        throw new Error(
-          'Browser engine is only supported on macOS today. Use --engine api instead, or run on macOS.',
-        );
-      }
       if (!browserConfig) {
         throw new Error('Missing browser configuration for session.');
       }
@@ -129,12 +124,14 @@ export async function performSessionRun({
       answerText.slice(0, 140),
     );
   } catch (error: unknown) {
-    const message = formatError(error);
-    log(`ERROR: ${message}`);
-    markErrorLogged(error);
     const userError = asOracleUserError(error);
+    const errorMessage = userError?.message ?? formatError(error);
     if (userError) {
       log(dim(`User error (${userError.category}): ${userError.message}`));
+      markErrorLogged(error);
+    } else {
+      log(`ERROR: ${errorMessage}`);
+      markErrorLogged(error);
     }
     const responseMetadata = error instanceof OracleResponseError ? error.metadata : undefined;
     const metadataLine = formatResponseMetadata(responseMetadata);
@@ -149,7 +146,7 @@ export async function performSessionRun({
     await updateSessionMetadata(sessionMeta.id, {
       status: 'error',
       completedAt: new Date().toISOString(),
-      errorMessage: message,
+      errorMessage: errorMessage,
       mode,
       browser: browserConfig ? { config: browserConfig } : undefined,
       response: responseMetadata,

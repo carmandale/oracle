@@ -94,6 +94,7 @@ Put per-user defaults in `~/.oracle/config.json` (parsed as JSON5, so comments/t
 | `-p, --prompt <text>` | Required prompt. |
 | `-f, --file <paths...>` | Attach files/dirs (supports globs and `!` excludes). |
 | `-e, --engine <api\|browser>` | Choose API or browser automation. Omitted: API when `OPENAI_API_KEY` is set, otherwise browser. |
+| `--browser-port <port>` | Pin the Chrome DevTools port (WSL firewall helper; falls back to random if omitted). |
 | `-m, --model <name>` | `gpt-5-pro` (default) or `gpt-5.1`. |
 | `--base-url <url>` | Point the API engine at any OpenAI-compatible endpoint (LiteLLM, Azure, etc.). |
 | `--azure-endpoint <url>` | Use Azure OpenAI (switches client automatically). |

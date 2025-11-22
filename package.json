@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "pnpm run typecheck && biome lint .",
     "test": "vitest run",
+    "test:browser": "tsx scripts/test-browser.ts",
     "test:coverage": "vitest run --coverage",
     "prepare": "pnpm run build",
     "mcp": "pnpm run build && node ./dist/bin/oracle-mcp.js"

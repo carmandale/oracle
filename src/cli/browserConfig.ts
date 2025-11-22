@@ -21,6 +21,8 @@ export interface BrowserFlagOptions {
   browserChromePath?: string;
   browserUrl?: string;
   browserTimeout?: string;
+  browserPort?: number;
+  browserDebugPort?: number;
   browserInputTimeout?: string;
   browserNoCookieSync?: boolean;
   browserInlineCookiesFile?: string;
@@ -76,6 +78,7 @@ export async function buildBrowserConfig(options: BrowserFlagOptions): Promise<B
     chromeProfile: options.browserChromeProfile ?? DEFAULT_CHROME_PROFILE,
     chromePath: options.browserChromePath ?? null,
     url: options.browserUrl,
+    debugPort: options.browserPort ?? options.browserDebugPort ?? null,
     timeoutMs: options.browserTimeout ? parseDuration(options.browserTimeout, DEFAULT_BROWSER_TIMEOUT_MS) : undefined,
     inputTimeoutMs: options.browserInputTimeout
       ? parseDuration(options.browserInputTimeout, DEFAULT_BROWSER_INPUT_TIMEOUT_MS)

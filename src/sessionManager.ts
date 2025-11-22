@@ -13,6 +13,7 @@ export interface BrowserSessionConfig {
   chromePath?: string | null;
   url?: string;
   timeoutMs?: number;
+  debugPort?: number | null;
   inputTimeoutMs?: number;
   cookieSync?: boolean;
   cookieNames?: string[] | null;
@@ -30,6 +31,7 @@ export interface BrowserSessionConfig {
 export interface BrowserRuntimeMetadata {
   chromePid?: number;
   chromePort?: number;
+  chromeHost?: string;
   userDataDir?: string;
 }
 
