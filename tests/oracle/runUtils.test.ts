@@ -26,8 +26,8 @@ describe('runUtils #formatTokenEstimate', () => {
     expect(formatTokenEstimate(999)).toBe('999');
   });
 
-  it('abbreviates thousands with k and rounds to one decimal', () => {
-    expect(formatTokenEstimate(4252)).toBe('4.2k');
+  it('abbreviates thousands with k and rounds to two decimals', () => {
+    expect(formatTokenEstimate(4252)).toBe('4.25k');
     expect(formatTokenEstimate(4000)).toBe('4k');
   });
 
