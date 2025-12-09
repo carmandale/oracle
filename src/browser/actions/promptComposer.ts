@@ -265,25 +265,40 @@ async function verifyPromptCommitted(
     const fallback = document.querySelector(${fallbackSelectorLiteral});
     const normalize = (value) => value?.toLowerCase?.().replace(/\\s+/g, ' ').trim() ?? '';
     const normalizedPrompt = normalize(${encodedPrompt});
+    const normalizedPromptPrefix = normalizedPrompt.slice(0, 120);
     const CONVERSATION_SELECTOR = ${JSON.stringify(CONVERSATION_TURN_SELECTOR)};
     const articles = Array.from(document.querySelectorAll(CONVERSATION_SELECTOR));
-    const userMatched = articles.some((node) => normalize(node?.innerText).includes(normalizedPrompt));
+    const normalizedTurns = articles.map((node) => normalize(node?.innerText));
+    const userMatched = normalizedTurns.some((text) => text.includes(normalizedPrompt));
+    const prefixMatched =
+      normalizedPromptPrefix.length > 30 &&
+      normalizedTurns.some((text) => text.includes(normalizedPromptPrefix));
+    const lastTurn = normalizedTurns[normalizedTurns.length - 1] ?? '';
     return {
       userMatched,
+      prefixMatched,
       fallbackValue: fallback?.value ?? '',
       editorValue: editor?.innerText ?? '',
+      lastTurn,
+      turnsCount: normalizedTurns.length,
     };
   })()`;
 
   while (Date.now() < deadline) {
     const { result } = await Runtime.evaluate({ expression: script, returnByValue: true });
-    const info = result.value as { userMatched: boolean };
-    if (info?.userMatched) {
+    const info = result.value as { userMatched: boolean; prefixMatched?: boolean };
+    if (info?.userMatched || info?.prefixMatched) {
       return;
     }
     await delay(100);
   }
   if (logger) {
+    logger(
+      `Prompt commit check failed; latest state: ${await Runtime.evaluate({
+        expression: script,
+        returnByValue: true,
+      }).then((res) => JSON.stringify(res?.result?.value)).catch(() => 'unavailable')}`,
+    );
     await logDomFailure(Runtime, logger, 'prompt-commit');
   }
   throw new Error('Prompt did not appear in conversation before timeout (send may have failed)');

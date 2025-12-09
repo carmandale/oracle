@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.5 — 2025-12-09
+
+### Changed
+- Browser uploads: after `setFileInputFiles` we now log the chips + file-input contents and only mark success when the real file input contains the uploaded filename; the generic “Files” pill is no longer treated as proof of attachment.
+- Inline prompt commit: verification now matches on a normalized prefix and logs the last user turn + counts when commit fails, reducing false negatives for inline/file-paste runs.
+
+### Fixed
+- Inline fallback (pasting file contents) now reliably submits and captures the user turn; headful smoke confirms the marker text is echoed back.
+
 ## 0.5.4 — 2025-12-08
 
 ### Changed

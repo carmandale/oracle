@@ -157,9 +157,35 @@ export async function uploadAttachmentFile(
 
   await tryFileInput();
 
+  // Snapshot the attachment state immediately after setting files so we can detect silent failures.
+  const snapshotExpr = `(() => {
+    const chips = Array.from(document.querySelectorAll('[data-testid*="attachment"],[data-testid*="chip"],[data-testid*="upload"],[aria-label="Remove file"]'))
+      .map((node) => (node?.textContent || '').trim())
+      .filter(Boolean);
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]')).map((el) => ({
+      files: Array.from(el.files || []).map((f) => f?.name ?? ''),
+    }));
+    return { chips, inputs };
+  })()`;
+  const snapshot = await runtime
+    .evaluate({ expression: snapshotExpr, returnByValue: true })
+    .then((res) => res?.result?.value as { chips?: string[]; inputs?: { files?: string[] }[] })
+    .catch(() => undefined);
+  if (snapshot) {
+    logger?.(
+      `Attachment snapshot after setFileInputFiles: chips=${JSON.stringify(snapshot.chips || [])} inputs=${JSON.stringify(
+        snapshot.inputs || [],
+      )}`,
+    );
+  }
+  const inputHasFile =
+    snapshot?.inputs?.some((entry) =>
+      (entry.files || []).some((name) => name?.toLowerCase?.().includes(expectedName.toLowerCase())),
+    ) ?? false;
+
   if (await waitForAttachmentAnchored(runtime, expectedName, 20_000)) {
     await waitForAttachmentVisible(runtime, expectedName, 20_000, logger);
-    logger('Attachment queued (file input)');
+    logger(inputHasFile ? 'Attachment queued (file input, confirmed present)' : 'Attachment queued (file input)');
     return;
   }
 
@@ -218,10 +244,6 @@ export async function waitForAttachmentCompletion(
       btn?.parentElement?.parentElement?.innerText?.toLowerCase?.() ?? '',
     );
     attachedNames.push(...cardTexts.filter(Boolean));
-    const filesPills = Array.from(document.querySelectorAll('button,div'))
-      .map((node) => (node?.textContent || '').toLowerCase())
-      .filter((text) => /\bfiles\b/.test(text));
-    attachedNames.push(...filesPills);
     const filesAttached = attachedNames.length > 0;
     return { state: button ? (disabled ? 'disabled' : 'ready') : 'missing', uploading, filesAttached, attachedNames };
   })()`;
@@ -314,13 +336,6 @@ export async function waitForAttachmentVisible(
       return { found: true, userTurns: userTurns.length, source: 'attachment-cards' };
     }
 
-    const filesPills = Array.from(document.querySelectorAll('button,div')).map((node) =>
-      (node?.textContent || '').toLowerCase(),
-    );
-    if (filesPills.some((text) => /\bfiles\b/.test(text))) {
-      return { found: true, userTurns: userTurns.length, source: 'files-pill' };
-    }
-
     const attrMatch = Array.from(document.querySelectorAll('[aria-label], [title], [data-testid]')).some(matchNode);
     if (attrMatch) {
       return { found: true, userTurns: userTurns.length, source: 'attrs' };
@@ -371,13 +386,6 @@ async function waitForAttachmentAnchored(
     );
     if (cards.some((text) => text.includes(normalized))) {
       return { found: true, text: cards.find((t) => t.includes(normalized)) };
-    }
-
-    const filesPills = Array.from(document.querySelectorAll('button,div')).map((node) =>
-      (node?.textContent || '').toLowerCase(),
-    );
-    if (filesPills.some((text) => /\bfiles\b/.test(text))) {
-      return { found: true, text: filesPills.find((t) => /\bfiles\b/.test(t)) };
     }
 
     // As a last resort, treat file inputs that hold the target name as anchored. Some UIs delay chip rendering.
