@@ -15,7 +15,7 @@ export async function launchChrome(config: ResolvedBrowserConfig, userDataDir: s
   const connectHost = resolveRemoteDebugHost();
   const debugBindAddress = connectHost && connectHost !== '127.0.0.1' ? '0.0.0.0' : connectHost;
   const debugPort = config.debugPort ?? parseDebugPortEnv();
-  const chromeFlags = buildChromeFlags(config.headless ?? false, debugBindAddress);
+  const chromeFlags = buildChromeFlags(config.headless ?? false, debugBindAddress, config.forceEnglishLocale ?? false);
   const usePatchedLauncher = Boolean(connectHost && connectHost !== '127.0.0.1');
   const launcher = usePatchedLauncher
     ? await launchWithCustomHost({
@@ -187,7 +187,7 @@ export interface RemoteChromeConnection {
   targetId?: string;
 }
 
-function buildChromeFlags(headless: boolean, debugBindAddress?: string | null): string[] {
+function buildChromeFlags(headless: boolean, debugBindAddress?: string | null, forceEnglishLocale = false): string[] {
   const flags = [
     '--disable-background-networking',
     '--disable-background-timer-throttling',
@@ -205,9 +205,11 @@ function buildChromeFlags(headless: boolean, debugBindAddress?: string | null): 
     '--disable-features=TranslateUI,AutomationControlled',
     '--mute-audio',
     '--window-size=1280,720',
-    '--lang=en-US',
-    '--accept-lang=en-US,en',
   ];
+
+  if (forceEnglishLocale) {
+    flags.push('--lang=en-US', '--accept-lang=en-US,en');
+  }
 
   if (process.platform !== 'win32' && !isWsl()) {
     flags.push('--password-store=basic', '--use-mock-keychain');

@@ -26,6 +26,7 @@ export interface BrowserConfigDefaults {
   hideWindow?: boolean;
   keepBrowser?: boolean;
   modelStrategy?: BrowserModelStrategy;
+  forceEnglishLocale?: boolean;
   /** Thinking time intensity (ChatGPT Thinking/Pro models): 'light', 'standard', 'extended', 'heavy' */
   thinkingTime?: ThinkingTimeLevel;
   /** Skip cookie sync and reuse a persistent automation profile (waits for manual ChatGPT login). */

@@ -5,6 +5,12 @@
 ### Changed
 - Release: disable npm progress output in Codex runs via `scripts/release.sh`.
 
+### Added
+- Config: allow `browser.forceEnglishLocale` to opt into `--lang/--accept-lang` for browser runs.
+
+### Fixed
+- Browser: avoid stray attachment removal clicks while still detecting stale chips, and allow completed uploads even if send stays disabled. Original PR #56 by Alex Naidis (@TheCrazyLex) — thank you!
+
 ### Docs
 - Release checklist now requires GitHub release notes to match the full changelog section.
 

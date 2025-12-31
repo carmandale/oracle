@@ -1143,6 +1143,15 @@ export async function clearComposerAttachments(
       '[data-testid*="remove-attachment"]',
       '[data-testid*="attachment-remove"]',
     ];
+    const presenceSelectors = [
+      '[data-testid*="attachment"]',
+      '[data-testid*="chip"]',
+      '[data-testid*="upload"]',
+      '[data-testid*="remove-attachment"]',
+      '[data-testid*="attachment-remove"]',
+      '[aria-label*="Remove"]',
+      '[aria-label*="remove"]',
+    ];
     const visible = (el) => {
       if (!(el instanceof HTMLElement)) return false;
       const rect = el.getBoundingClientRect();
@@ -1160,7 +1169,8 @@ export async function clearComposerAttachments(
         button.click();
       } catch {}
     }
-    const chipCount = removeButtons.length;
+    const chipSelector = presenceSelectors.join(',');
+    const chipCount = scope ? scope.querySelectorAll(chipSelector).length : 0;
     const inputs = scope ? Array.from(scope.querySelectorAll('input[type="file"]')) : [];
     let inputCount = 0;
     for (const input of inputs) {
@@ -1492,8 +1502,9 @@ export async function waitForAttachmentCompletion(
         if (stable && value.state === 'ready') {
           return;
         }
-        // Don't treat disabled button as complete - wait for it to become 'ready'.
-        // The spinner detection is unreliable, so a disabled button likely means upload is in progress.
+        if (stable && value.state === 'disabled' && !value.uploading) {
+          return;
+        }
         if (value.state === 'missing' && (value.filesAttached || fileCountSatisfied)) {
           return;
         }
@@ -1516,8 +1527,8 @@ export async function waitForAttachmentCompletion(
           (raw) => raw.includes(normalizedExpected) || (expectedNoExt.length >= 6 && raw.includes(expectedNoExt)),
         );
       });
-      // Don't include 'disabled' - a disabled button likely means upload is still in progress.
-      const inputStateOk = value.state === 'ready' || value.state === 'missing';
+      const inputStateOk =
+        value.state === 'ready' || value.state === 'missing' || (value.state === 'disabled' && !value.uploading);
       const inputSeenNow = inputMissing.length === 0 || fileCountSatisfied;
       const stableThresholdMs = value.uploading ? 3000 : 1500;
       if (inputSeenNow && inputStateOk) {
