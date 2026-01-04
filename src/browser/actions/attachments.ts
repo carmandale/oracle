@@ -485,16 +485,39 @@ export async function uploadAttachmentFile(
         if (!(el instanceof HTMLInputElement)) return total;
         const count = Array.from(el.files || []).length;
         return total + count;
-      }, 0);
-      const isImageAttachment = ${JSON.stringify(isImageAttachment)};
-      const acceptIsImageOnly = (accept) => {
-        if (!accept) return false;
-        const parts = String(accept)
-          .split(',')
-          .map((p) => p.trim().toLowerCase())
-          .filter(Boolean);
-        return parts.length > 0 && parts.every((p) => p.startsWith('image/'));
-      };
+	      }, 0);
+	      const isImageAttachment = ${JSON.stringify(isImageAttachment)};
+	      const imageExtensions = new Set([
+	        '.avif',
+	        '.bmp',
+	        '.gif',
+	        '.heic',
+	        '.heif',
+	        '.jpeg',
+	        '.jpg',
+	        '.png',
+	        '.svg',
+	        '.svgz',
+	        '.tif',
+	        '.tiff',
+	        '.webp',
+	      ]);
+	      const acceptIsImageOnly = (accept) => {
+	        if (!accept) return false;
+	        const parts = String(accept)
+	          .split(',')
+	          .map((p) => p.trim().toLowerCase())
+	          .filter(Boolean);
+	        return (
+	          parts.length > 0 &&
+	          parts.every((part) => {
+	            if (part === '*/*') return false;
+	            if (part.startsWith('image/')) return true;
+	            if (part.startsWith('.')) return imageExtensions.has(part);
+	            return false;
+	          })
+	        );
+	      };
       const chipContainer = scope ?? document;
         const chipSelector = '[data-testid*="attachment"],[data-testid*="chip"],[data-testid*="upload"],[data-testid*="file"],[aria-label*="Remove"],[aria-label*="remove"]';
       const baselineChipCount = chipContainer.querySelectorAll(chipSelector).length;
