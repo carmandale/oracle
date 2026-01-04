@@ -6,6 +6,9 @@
 - Deps: update zod to `4.3.3`.
 - Deps: add `qs` as a direct dependency (avoids Dependabot pnpm transitive-update failures).
 
+### Fixed
+- Browser: fix attachment uploads in the current ChatGPT composer (avoid duplicate uploads; avoid image-only inputs for non-image files) (#60) — thanks @TheCrazyLex!
+
 ## 0.8.3 — 2025-12-31
 
 ### Added
